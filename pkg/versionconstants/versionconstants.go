@@ -49,10 +49,10 @@ func IsUnreleasedDdevVersion(version string) bool {
 var WebImg = "ddev/ddev-webserver"
 
 // WebTag defines the default web image tag
-var WebTag = "1e806df80c" // 20261022_rfay_phpstatus_localhost-1e806df80c
+var WebTag = "b45ac7328c" // 20261025_samuelreichor_faster_start-b45ac7328c
 
 // WebTagBranch is the branch WebTag's content was built from.
-var WebTagBranch = "20261022_rfay_phpstatus_localhost"
+var WebTagBranch = "20261025_samuelreichor_faster_start"
 
 // DBImg defines the default db image used for applications.
 var DBImg = "ddev/ddev-dbserver"
@@ -67,10 +67,10 @@ var BaseDBTagBranch = "20261019_rfay_podman_image_build"
 var TraefikRouterImage = "ddev/ddev-traefik-router"
 
 // TraefikRouterTag is traefik router tag
-var TraefikRouterTag = "5089986640" // 20261019_rfay_podman_image_build-5089986640
+var TraefikRouterTag = "abe483191f" // 20261025_samuelreichor_faster_start-abe483191f
 
 // TraefikRouterTagBranch is the branch TraefikRouterTag's content was built from.
-var TraefikRouterTagBranch = "20261019_rfay_podman_image_build"
+var TraefikRouterTagBranch = "20261025_samuelreichor_faster_start"
 
 // SSHAuthImage is image for agent
 var SSHAuthImage = "ddev/ddev-ssh-agent"

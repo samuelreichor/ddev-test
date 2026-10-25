@@ -20,9 +20,11 @@ if [ -f /tmp/healthy ]; then
     sleep ${sleeptime}
 fi
 
-# Shutdown the supervisor if one of the critical processes is in the FATAL state
+# Shutdown the supervisor if one of the critical processes is in the FATAL state.
+# One supervisorctl call for all of them, since each call takes over 100ms.
+supervisor_status=$(supervisorctl status php-fpm nginx apache2 2>/dev/null || true)
 for service in php-fpm nginx apache2; do
-  if supervisorctl status "${service}" 2>/dev/null | grep -q FATAL; then
+  if printf "%s\n" "${supervisor_status}" | grep -q "^${service}[[:space:]].*FATAL"; then
     printf "%s:FATAL " "${service}"
     supervisorctl shutdown
     # PID 1 doesn't exit when supervisord does, so stop the container to fail fast
@@ -46,6 +48,13 @@ if curl -q --fail -s 127.0.0.1:8025 >/dev/null; then
     printf "mailpit:OK "
 else
     printf "mailpit:FAILED "
+fi
+
+# start.sh trusts the mkcert CA in the background
+if [ -f /tmp/mkcert-install-pending ]; then
+    printf "mkcert:PENDING "
+    rm -f /tmp/healthy
+    exit 1
 fi
 
 # If DDEV_WEBSERVER_TYPE is not set, use reasonable default

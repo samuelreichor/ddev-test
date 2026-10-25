@@ -237,7 +237,7 @@ func StartDdevRouter() (err error) {
 			routerWaitTimeout = 180
 		}
 		wait = output.StartWait(fmt.Sprintf("Waiting for %s to become ready", nodeps.RouterContainer))
-		util.Debug("Router wait: checking for container with labels %v, polling every 500ms for healthy status", label)
+		util.Debug("Router wait: checking for container with labels %v for healthy status", label)
 		logOutput, err := dockerutil.ContainerWait(routerWaitTimeout, label)
 		if err != nil {
 			elapsed := wait.Complete(err)

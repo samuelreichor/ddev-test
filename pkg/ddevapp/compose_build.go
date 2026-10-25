@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	composeTypes "github.com/compose-spec/compose-go/v2/types"
@@ -179,4 +181,54 @@ func buildTagCollisions(project *composeTypes.Project) map[string][]string {
 		})
 	})
 	return builders
+}
+
+// buildImagesForStart builds the project's images unless nothing they depend
+// on changed since the last build, which costs seconds even when every layer
+// is cached. project is what the start runs, buildProject what it builds.
+func (app *DdevApp) buildImagesForStart(project, buildProject *composeTypes.Project, buildOptions api.BuildOptions, uid string) error {
+	fingerprintPath := app.buildFingerprintPath()
+	if !buildOptions.NoCache {
+		previous, err := os.ReadFile(fingerprintPath)
+		if fingerprint, ok := app.buildFingerprint(buildProject, buildOptions.Services); ok && err == nil && strings.TrimSpace(string(previous)) == fingerprint {
+			util.Debug("Skipping the image build, nothing it depends on changed")
+			return nil
+		}
+	}
+	_ = os.Remove(fingerprintPath)
+
+	wait := output.StartWait("Building project images")
+	webBuiltImage := app.WebImage + "-" + app.Name + "-built"
+	webContentBefore := dockerutil.ImageContentID(webBuiltImage)
+	built, err := app.buildProjectImages(buildProject, buildOptions)
+	if err != nil {
+		wait.Complete(err)
+		return err
+	}
+	if !built {
+		return nil
+	}
+	// A fully cached build keeps the stderr log of the build that made the
+	// image, so checking it again would rebuild without cache on every start.
+	if dockerutil.ImageContentID(webBuiltImage) != webContentBefore {
+		_, logStderrOutput, logStderrErr := dockerutil.RunSimpleContainer(webBuiltImage, "log-stderr-"+app.Name+"-"+util.RandString(6), []string{"sh", "-c", "log-stderr.sh --show 2>/dev/null || true"}, []string{}, []string{}, nil, uid, true, false, nil, nil, nil)
+		// If the web image is dirty, try to rebuild it immediately
+		if logStderrErr == nil && strings.TrimSpace(logStderrOutput) != "" && dockerutil.IsRegistryReachable() {
+			wait.Done(nil, "built")
+			wait = output.StartWait("Rebuilding web image without cache")
+			err = app.composeBuild(project, api.BuildOptions{Services: []string{"web"}, NoCache: true})
+			if err != nil {
+				wait.Complete(err)
+				return err
+			}
+		}
+	}
+	wait.Done(nil, "built")
+
+	if fingerprint, ok := app.buildFingerprint(buildProject, buildOptions.Services); ok {
+		if err = os.WriteFile(fingerprintPath, []byte(fingerprint+"\n"), 0644); err != nil {
+			util.Debug("Unable to write %s: %v", fingerprintPath, err)
+		}
+	}
+	return nil
 }

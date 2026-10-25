@@ -1858,6 +1858,7 @@ func PrepDdevDirectory(app *DdevApp) error {
 	}
 	ignores = append(ignores,
 		"**/*.example",
+		".build-fingerprint",
 		".dbimageBuild",
 		".ddev-docker-*.yaml",
 		".*downloads",

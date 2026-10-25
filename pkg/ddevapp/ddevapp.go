@@ -1624,6 +1624,14 @@ func (app *DdevApp) start(o StartOptions) error {
 		return err
 	}
 
+	// The space check runs a container of its own, so it overlaps with the
+	// steps before its result is reported.
+	var spaceErr error
+	var spaceWg sync.WaitGroup
+	spaceWg.Go(func() {
+		spaceErr = dockerutil.CheckAvailableSpace()
+	})
+
 	if !globalconfig.IsInternetActive() && globalconfig.DdevDebug {
 		util.WarningOnce("Internet connection not detected, DNS may not work.\nWarning: %v\nSee https://docs.ddev.com/en/stable/users/usage/offline/ for info.", globalconfig.IsInternetActiveErr)
 	}
@@ -1842,8 +1850,9 @@ func (app *DdevApp) start(o StartOptions) error {
 		return err
 	}
 
-	if err := dockerutil.CheckAvailableSpace(); err != nil {
-		util.Warning("Warning: %v", err)
+	spaceWg.Wait()
+	if spaceErr != nil {
+		util.Warning("Warning: %v", spaceErr)
 	}
 
 	// Copy any homeadditions content into .ddev/.homeadditions
@@ -1997,25 +2006,8 @@ func (app *DdevApp) start(o StartOptions) error {
 		}
 		buildOptions.Services = append(project.ServiceNames(), builtProfileServices(project)...)
 	}
-	wait := output.StartWait("Building project images")
-	built, err := app.buildProjectImages(buildProject, buildOptions)
-	if err != nil {
-		wait.Complete(err)
+	if err = app.buildImagesForStart(project, buildProject, buildOptions, uid); err != nil {
 		return err
-	}
-	if built {
-		_, logStderrOutput, logStderrErr := dockerutil.RunSimpleContainer(app.WebImage+"-"+app.Name+"-built", "log-stderr-"+app.Name+"-"+util.RandString(6), []string{"sh", "-c", "log-stderr.sh --show 2>/dev/null || true"}, []string{}, []string{}, nil, uid, true, false, nil, nil, nil)
-		// If the web image is dirty, try to rebuild it immediately
-		if logStderrErr == nil && strings.TrimSpace(logStderrOutput) != "" && dockerutil.IsRegistryReachable() {
-			wait.Done(nil, "built")
-			wait = output.StartWait("Rebuilding web image without cache")
-			err = app.composeBuild(project, api.BuildOptions{Services: []string{"web"}, NoCache: true})
-			if err != nil {
-				wait.Complete(err)
-				return err
-			}
-		}
-		wait.Done(nil, "built")
 	}
 
 	util.Verbose("Removing dangling images for the project %s", app.GetComposeProjectName())
@@ -2172,7 +2164,7 @@ func (app *DdevApp) start(o StartOptions) error {
 	if !app.IsDBOmitted() {
 		dependers = append(dependers, "db")
 	}
-	wait = output.StartWait(fmt.Sprintf("Waiting for containers to become ready: %v", dependers))
+	wait := output.StartWait(fmt.Sprintf("Waiting for containers to become ready: %v", dependers))
 	waitErr := app.Wait(dependers)
 	wait.Complete(waitErr)
 	app.DefaultContainerTimeout = origDefaultContainerTimeout

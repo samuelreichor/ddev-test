@@ -2,6 +2,7 @@ package dockerutil
 
 import (
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/assert"
@@ -225,5 +226,24 @@ func TestMergePortBindings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.expected, mergePortBindings(tt.configured, tt.actual))
 		})
+	}
+}
+
+func TestNewPollTicker(t *testing.T) {
+	tick, stop := newPollTicker(time.Hour)
+	defer stop()
+	select {
+	case <-tick:
+	case <-time.After(time.Second):
+		t.Fatal("the first tick should come right away")
+	}
+
+	tick, stop = newPollTicker(10 * time.Millisecond)
+	defer stop()
+	<-tick
+	select {
+	case <-tick:
+	case <-time.After(time.Second):
+		t.Fatal("later ticks should follow the interval")
 	}
 }

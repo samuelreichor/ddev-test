@@ -28,6 +28,9 @@ certificatesResolvers:
       tlsChallenge: {}
 
 providers:
+  # The default of 2s can hold back the config a project start pushes, and
+  # the start waits until Traefik has loaded it.
+  providersThrottleDuration: 200ms
   file:
     directory: /mnt/ddev-global-cache/traefik/config
     watch: true
