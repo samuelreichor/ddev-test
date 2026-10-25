@@ -73,14 +73,14 @@ wait_for_routers() {
     local expected_router_count="$2"
     local error_count="$3"
 
-    # How long to wait (seconds) for Traefik to reflect new file-provider config.
+    # Wait up to 60s, polling often since a project start waits on this.
     # This covers both initial startup and later config pushes.
-    local max_retries=60
+    local max_retries=300
 
     # Only retry if: we expect some routers AND there are no errors yet AND counts don't match yet.
     if [ "$expected_router_count" -gt 0 ] && [ "$error_count" -eq 0 ] && [ "$file_router_count" -ne "$expected_router_count" ]; then
         for _ in $(seq 1 $max_retries); do
-            sleep 1
+            sleep 0.2
             file_router_count=$(get_traefiks_router_count)
             error_count=$(get_error_count)
 

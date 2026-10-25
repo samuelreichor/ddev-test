@@ -343,6 +343,35 @@ func FindContainersWithLabel(label string) ([]container.Summary, error) {
 	return containers.Items, nil
 }
 
+// containerPollInterval is how often the wait loops check container health.
+const containerPollInterval = 250 * time.Millisecond
+
+// newPollTicker works like time.NewTicker but also fires right away, so a
+// container that is already healthy doesn't cost a full interval.
+func newPollTicker(d time.Duration) (<-chan time.Time, func()) {
+	c := make(chan time.Time, 1)
+	c <- time.Now()
+	t := time.NewTicker(d)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case v := <-t.C:
+				select {
+				case c <- v:
+				default:
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return c, func() {
+		t.Stop()
+		close(done)
+	}
+}
+
 // ContainerWait provides a wait loop to check for a single container in "healthy" status.
 // waittime is in seconds.
 // This is modeled on https://gist.github.com/ngauthier/d6e6f80ce977bedca601
@@ -350,8 +379,8 @@ func FindContainersWithLabel(label string) ([]container.Summary, error) {
 func ContainerWait(waittime int, labels map[string]string) (string, error) {
 	durationWait := time.Duration(waittime) * time.Second
 	timeoutChan := time.NewTimer(durationWait)
-	tickChan := time.NewTicker(500 * time.Millisecond)
-	defer tickChan.Stop()
+	tickChan, stopTick := newPollTicker(containerPollInterval)
+	defer stopTick()
 	defer timeoutChan.Stop()
 
 	status := ""
@@ -374,7 +403,11 @@ func ContainerWait(waittime int, labels map[string]string) (string, error) {
 			}
 			return "", fmt.Errorf("health check timed out after %v: labels %v timed out without becoming healthy, status=%v, detail=%s ", durationWait, labels, status, desc)
 
-		case <-tickChan.C:
+		case <-tickChan:
+			// Past the deadline, let the timeout case report it.
+			if time.Since(startTime) >= durationWait {
+				continue
+			}
 			c, err := FindContainerByLabels(labels)
 			cName := ""
 			if err != nil || c == nil {
@@ -418,8 +451,8 @@ func ContainerWait(waittime int, labels map[string]string) (string, error) {
 // Returns error if not all containers become "healthy" before the timeout.
 func ContainersWait(waittime int, labels map[string]string, filterServices ...string) error {
 	timeoutChan := time.After(time.Duration(waittime) * time.Second)
-	tickChan := time.NewTicker(500 * time.Millisecond)
-	defer tickChan.Stop()
+	tickChan, stopTick := newPollTicker(containerPollInterval)
+	defer stopTick()
 
 	status := ""
 	lastStatus := ""
@@ -445,7 +478,10 @@ func ContainersWait(waittime int, labels map[string]string, filterServices ...st
 			}
 			return fmt.Errorf("health check timed out: labels %v timed out without becoming healthy, status=%v, detail=%s ", labels, status, desc)
 
-		case <-tickChan.C:
+		case <-tickChan:
+			if time.Since(startTime) >= time.Duration(waittime)*time.Second {
+				continue
+			}
 			containers, err := FindContainersByLabels(labels)
 			if err != nil || containers == nil {
 				return fmt.Errorf("failed to query container labels=%v: %v", labels, err)

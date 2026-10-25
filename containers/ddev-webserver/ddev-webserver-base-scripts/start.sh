@@ -140,8 +140,13 @@ fi
 # It also creates them if they don't already exist
 if [ ! -f  "${CAROOT}/rootCA.pem" ]; then
   echo "rootCA.pem not found in ${CAROOT}"
+  mkcert -install
+else
+  # Trusting the CA takes over a second and the certificate below doesn't need
+  # it, so it runs alongside; the healthcheck waits for the marker to go away.
+  touch /tmp/mkcert-install-pending
+  (mkcert -install; rm -f /tmp/mkcert-install-pending) &
 fi
-mkcert -install
 
 # VIRTUAL_HOST is a comma-delimited set of fqdns, convert it to space-separated and mkcert
 CAROOT=$CAROOT mkcert -cert-file /etc/ssl/certs/master.crt -key-file /etc/ssl/certs/master.key ${VIRTUAL_HOST//,/ } localhost 127.0.0.1 ${DOCKER_IP} web ddev-${DDEV_PROJECT:-}-web ddev-${DDEV_PROJECT:-}-web.ddev

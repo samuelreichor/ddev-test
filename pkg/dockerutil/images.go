@@ -3,6 +3,7 @@ package dockerutil
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/containerd/platforms"
@@ -32,6 +33,22 @@ func ImageLabel(imageName string, label string) (string, error) {
 		return "", nil
 	}
 	return inspect.Config.Labels[label], nil
+}
+
+// ImageContentID returns the image's layer list, which stays the same when a
+// build is fully cached. The image ID can't serve: with the containerd image
+// store it is the index digest, which changes with every build's attestations.
+// It returns an empty string when the image doesn't exist locally.
+func ImageContentID(imageName string) string {
+	ctx, apiClient, err := GetDockerClient()
+	if err != nil {
+		return ""
+	}
+	inspect, err := apiClient.ImageInspect(ctx, imageName)
+	if err != nil {
+		return ""
+	}
+	return strings.Join(inspect.RootFS.Layers, ",")
 }
 
 // ImageExistsLocally determines if an image is available locally.
